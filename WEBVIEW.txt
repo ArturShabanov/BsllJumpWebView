@@ -1,0 +1,50 @@
+Документация по WebView (кратко)
+
+- Назначение
+  - Показывать внешний веб‑контент внутри приложения через нативный WebView.
+
+- Где в проекте
+  - Скрипт (основной): Assets/Scripts/FirestoreWebViewManager.cs
+  - Загрузка/роутинг сцен: Assets/Scripts/BootLoader.cs
+  - Сцены: Assets/LoaderScene.unity (старт), Assets/WebViewScene.unity (сам WebView)
+  - Плагин: Assets/Plugins/WebViewObject.cs (+ iOS мосты в Assets/Plugins/iOS)
+
+- Откуда берём ссылку (источник URL)
+  - Firestore: документ links/sweetbonanza, строковое поле samsung (желателен https://)
+  - google-services.json — только конфиг Firebase, URL там не хранится
+
+- Порядок выбора URL (в WebViewScene)
+  1) PlayerPrefs: webview_last_url (последний успешный)
+  2) PlayerPrefs: webview_start_url (базовый; выставляется BootLoader из Firestore)
+  3) emergencyUrl (поле в инспекторе FirestoreWebViewManager, опционально)
+
+- Как запускается
+  - Приложение стартует со сцены LoaderScene
+  - BootLoader:
+    - Если WebView уже открывался → сразу грузит WebViewScene (липкий флаг webview_unlocked)
+    - Иначе: берёт webview_start_url из кеша или тянет из Firestore links/sweetbonanza.samsung (Cache → Server с таймаутом), сохраняет и грузит WebViewScene
+    - При отсутствии валидного URL грузит сцену‑фолбэк (сейчас SampleScene)
+  - FirestoreWebViewManager:
+    - Создаёт WebViewObject
+    - (Android) ставит мобильный User‑Agent через JNI, включает cookies/DOM storage до первой загрузки
+    - Загружает URL по приоритету (last → start → emergency)
+    - После первой успешной загрузки показывает WebView, сохраняет webview_last_url, ставит webview_unlocked = 1
+
+- Кеш/флаги (PlayerPrefs)
+  - webview_start_url — базовый URL из Firestore
+  - webview_last_url — последний успешный URL (не auth/логин)
+  - webview_unlocked — флаг успешного открытия WebView хотя бы раз
+
+- Особенности Android
+  - Кнопка «назад» выполняет навигацию GoBack() в истории WebView
+  - Включение cookies/3rd‑party/DOM storage до первой загрузки (JNI)
+  - При паузе/выходе выполняется CookieManager.flush()
+
+- Быстрый чек‑лист
+  - Build Settings: первой сценой стоит LoaderScene, далее WebViewScene, затем игровая (например, SampleScene)
+  - Firestore: links/sweetbonanza.samsung = https://... (валидный https)
+  - (Опц.) В WebViewScene у FirestoreWebViewManager заполнить emergencyUrl (https)
+  - В BootLoader включён tryCachedFirst для быстрого старта из кеша
+
+- Альтернативы в проекте
+  - Assets/Scripts/WebViewManager.cs — простой вариант (читает config/webview.url), не используется в сценах. В продакшене применять FirestoreWebViewManager
