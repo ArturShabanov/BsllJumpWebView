@@ -15,10 +15,6 @@ public class WebViewManager : MonoBehaviour
 
     private string baseUrl;
     private string baseDomain;
-    private string initialLoadedUrl;
-    private bool   userHasInteracted;
-    private int    initialHistoryLen = -1;
-    private int    currentHistoryLen = -1;
 
     private void Start()
     {
@@ -81,20 +77,16 @@ public class WebViewManager : MonoBehaviour
     {
         Debug.Log("WV Loaded: " + url);
 
-        if (string.IsNullOrEmpty(initialLoadedUrl)) initialLoadedUrl = url;
-        else if (!string.IsNullOrEmpty(url) && url != initialLoadedUrl) userHasInteracted = true;
-
         if (IsValidHttp(url) && IsSameDomain(url, baseDomain) && !LooksLikeAuth(url))
         {
             PlayerPrefs.SetString(LAST_URL_KEY, url);
             PlayerPrefs.Save();
         }
 
+        baseDomain = ExtractDomain(url);
+
         if (showAfterFirstLoad)
             webView.SetVisibility(true);
-
-        // JS-трекер истории
-        webView.EvaluateJS(@"(function(){try{if(window.__unity_hist_inited)return;window.__unity_hist_inited=true;window.__unity_hist_initLen=history.length;function __u_notify(){try{window.Unity.call('hist:'+history.length+':'+window.__unity_hist_initLen);}catch(e){}}var _p=history.pushState,_r=history.replaceState;history.pushState=function(){_p.apply(this,arguments);__u_notify();};history.replaceState=function(){_r.apply(this,arguments);__u_notify();};window.addEventListener('popstate',__u_notify);setTimeout(__u_notify,0);}catch(e){}})();");
     }
 
     private void Update()
@@ -120,24 +112,21 @@ public class WebViewManager : MonoBehaviour
 
     private void HandleBackNavigation()
     {
-        if (webView == null) { Application.Quit(); return; }
+        if (webView == null) 
+        {
+            Application.Quit(); 
+            return; 
+        }
 
-        bool canGoBackNative = webView.CanGoBack();
-        bool canGoBackSpa    = (initialHistoryLen >= 0 && currentHistoryLen > initialHistoryLen) || userHasInteracted;
-
-        if (canGoBackNative)
+        // Простая логика: если есть история в WebView, возвращаемся. Иначе — выходим.
+        if (webView.CanGoBack())
         {
             webView.GoBack();
-            return;
         }
-
-        if (canGoBackSpa)
+        else
         {
-            try { webView.EvaluateJS("history.back()"); } catch { }
-            return;
+            Application.Quit();
         }
-
-        Application.Quit();
     }
 
     private void OnDestroy()
@@ -198,25 +187,8 @@ public class WebViewManager : MonoBehaviour
 
     private void OnJSMessage(string msg)
     {
-        if (!string.IsNullOrEmpty(msg) && msg.StartsWith("hist:"))
-        {
-            var parts = msg.Split(':');
-            if (parts.Length >= 3)
-            {
-                int cur, init;
-                if (int.TryParse(parts[1], out cur)) currentHistoryLen = cur;
-                if (int.TryParse(parts[2], out init)) initialHistoryLen = init;
-            }
-        }
-        else if (!string.IsNullOrEmpty(msg) && msg.StartsWith("loc:"))
-        {
-            var href = msg.Substring(4);
-            if (!string.IsNullOrEmpty(href))
-            {
-                if (string.IsNullOrEmpty(initialLoadedUrl)) initialLoadedUrl = href;
-                else if (href != initialLoadedUrl) userHasInteracted = true;
-            }
-        }
+        // Пока что не используем JS-сообщения для определения back-навигации
+        // Полагаемся только на webView.CanGoBack()
     }
 }
 

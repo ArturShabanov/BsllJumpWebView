@@ -43,10 +43,6 @@ namespace App.Web
 
         private string initialCandidate;
         private bool   loadedOnce;
-        private string initialLoadedUrl;
-        private bool   userHasInteracted;
-        private int    initialHistoryLen = -1;
-        private int    currentHistoryLen = -1;
 
         private IEnumerator Start()
         {
@@ -135,30 +131,7 @@ namespace App.Web
             PlayerPrefs.SetInt(WEBVIEW_UNLOCKED_KEY, 1);
             PlayerPrefs.Save();
 
-            // Зафиксировать первый загруженный URL и отметить последующие переходы как действия
-            if (string.IsNullOrEmpty(initialLoadedUrl)) initialLoadedUrl = url;
-            else if (!string.IsNullOrEmpty(url) && url != initialLoadedUrl) userHasInteracted = true;
-
             SaveLastUrl(url);
-
-            // Трекер истории (pushState/replaceState/popstate) — сообщает текущее/начальное history.length
-            webView.EvaluateJS(@"(function(){try{if(window.__unity_hist_inited)return;window.__unity_hist_inited=true;window.__unity_hist_initLen=history.length;function __u_notify(){try{window.Unity.call('hist:'+history.length+':'+window.__unity_hist_initLen);}catch(e){}}var _p=history.pushState,_r=history.replaceState;history.pushState=function(){_p.apply(this,arguments);__u_notify();};history.replaceState=function(){_r.apply(this,arguments);__u_notify();};window.addEventListener('popstate',__u_notify);setTimeout(__u_notify,0);}catch(e){}})();");
-
-            // SPA-трекер: слать текущий location.href каждые 1.5 сек
-            webView.EvaluateJS(@"
-                (function(){
-                  try{
-                    if(window.__unity_loc_tracker) return;
-                    window.__unity_loc_tracker = setInterval(function(){
-                      try{
-                        if(window.location && window.location.href){
-                          window.Unity.call('loc:'+window.location.href);
-                        }
-                      }catch(e){}
-                    },1500);
-                  }catch(e){}
-                })();
-            ");
 
             webView.SetVisibility(true);
         }
@@ -176,24 +149,8 @@ namespace App.Web
 
         private void OnJsMessage(string msg)
         {
-            if (!string.IsNullOrEmpty(msg) && msg.StartsWith("loc:"))
-            {
-                var href = msg.Substring(4);
-                SaveLastUrl(href);
-                if (!string.IsNullOrEmpty(initialLoadedUrl) && !string.IsNullOrEmpty(href))
-                    userHasInteracted = (href != initialLoadedUrl);
-            }
-            else if (!string.IsNullOrEmpty(msg) && msg.StartsWith("hist:"))
-            {
-                // формат: hist:CURRENT:INITIAL
-                var parts = msg.Split(':');
-                if (parts.Length >= 3)
-                {
-                    int cur, init;
-                    if (int.TryParse(parts[1], out cur)) currentHistoryLen = cur;
-                    if (int.TryParse(parts[2], out init)) initialHistoryLen = init;
-                }
-            }
+            // Пока что не используем JS-сообщения для определения back-навигации
+            // Полагаемся только на webView.CanGoBack()
         }
 
         private void SaveLastUrl(string url)
@@ -227,24 +184,21 @@ namespace App.Web
 
         private void HandleBackNavigation()
         {
-            if (webView == null) { Application.Quit(); return; }
+            if (webView == null) 
+            {
+                Application.Quit(); 
+                return; 
+            }
 
-            bool canGoBackNative = webView.CanGoBack();
-            bool canGoBackSpa    = (initialHistoryLen >= 0 && currentHistoryLen > initialHistoryLen) || userHasInteracted;
-
-            if (canGoBackNative)
+            // Простая логика: если есть история в WebView, возвращаемся. Иначе — выходим.
+            if (webView.CanGoBack())
             {
                 webView.GoBack();
-                return;
             }
-
-            if (canGoBackSpa)
+            else
             {
-                try { webView.EvaluateJS("history.back()"); } catch { }
-                return;
+                Application.Quit();
             }
-
-            Application.Quit();
         }
 
         private void OnApplicationPause(bool pause)
