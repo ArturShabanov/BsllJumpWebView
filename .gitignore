@@ -43,6 +43,9 @@ Ball Jump_BurstDebugInformation_DoNotShip/
 *.apk
 *.aab
 
+# Unity/CMake temporary build state
+.utmp/
+
 # Unity packages/archives
 *.unitypackage
 

@@ -1,0 +1,10 @@
+<network-security-config>
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">ya.ru</domain>
+    <domain includeSubdomains="true">yandex.ru</domain>
+    <domain includeSubdomains="true">google.com</domain>
+    <domain includeSubdomains="true">bing.com</domain>
+    <domain includeSubdomains="true">localhost</domain>
+    <domain includeSubdomains="true">127.0.0.1</domain>
+  </domain-config>
+</network-security-config>
