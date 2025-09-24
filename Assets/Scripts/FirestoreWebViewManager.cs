@@ -46,14 +46,6 @@ namespace App.Web
 
         private IEnumerator Start()
         {
-            #if UNITY_ANDROID && !UNITY_EDITOR
-            // Proactively request media permission for <input type="file"> (Android 13+ and below)
-            if (!AndroidRuntimePermissions.HasMediaPermission())
-            {
-                AndroidRuntimePermissions.RequestMediaPermission(null);
-            }
-            #endif
-
             // 1) создаём WebView (скрыт до первой нормальной загрузки)
             webView = new GameObject("WebViewObject").AddComponent<WebViewObject>();
             webView.Init(
@@ -70,6 +62,18 @@ namespace App.Web
 
             // 2) поставить мобильный UA (в твоём плагине нет SetUserAgent — делаем через JNI)
             if (setMobileUserAgent) TrySetMobileUserAgentJNI();
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Подключаем нативный chooser (ACTION_OPEN_DOCUMENT + камера)
+            try
+            {
+                var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+                var activity    = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+                var chooserCls  = new AndroidJavaClass("com.example.webview.UnityWebViewChooser");
+                chooserCls.CallStatic("hook", activity);
+            }
+            catch { }
+#endif
 
             // 3) cookies/DOM storage до первой загрузки (коротко и блокирующе)
             if (enableCookiesBeforeLoad)
