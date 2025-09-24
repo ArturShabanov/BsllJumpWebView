@@ -71,6 +71,8 @@ namespace App.Web
                 var activity    = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
                 var chooserCls  = new AndroidJavaClass("com.example.webview.UnityWebViewChooser");
                 chooserCls.CallStatic("hook", activity);
+
+                // Загрузка APK реализована в UnityWebViewChooser (Java) через DownloadManager
             }
             catch { }
 #endif

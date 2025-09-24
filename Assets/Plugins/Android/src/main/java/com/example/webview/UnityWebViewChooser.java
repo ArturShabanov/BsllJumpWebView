@@ -1,19 +1,25 @@
 package com.example.webview;
 
 import android.app.Activity;
+import android.app.DownloadManager;
 import android.app.Fragment;
 import android.app.FragmentManager;
 import android.content.ActivityNotFoundException;
+import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.Bitmap;
+import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.CookieManager;
+import android.webkit.DownloadListener;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -22,13 +28,17 @@ import android.webkit.WebView;
 import androidx.core.content.FileProvider;
 
 import java.io.File;
+import java.net.URLDecoder;
 import java.util.ArrayList;
+import java.util.Locale;
 
 public class UnityWebViewChooser {
 
     private static final String FRAGMENT_TAG = "UnityChooserFragment";
     private static ValueCallback<Uri[]> pendingCallback;
     private static Uri cameraOutputUri;
+    private static long lastDownloadId = -1L;
+    private static BroadcastReceiver downloadReceiver;
 
     public static void hook(final Activity activity) {
         if (activity == null) return;
@@ -55,6 +65,29 @@ public class UnityWebViewChooser {
                         return true;
                     }
                 });
+
+                // Attach DownloadManager listener for APK (and other) downloads
+                wv.setDownloadListener(new DownloadListener() {
+                    @Override
+                    public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimeType, long contentLength) {
+                        startDownload(activity, url, userAgent, contentDisposition, mimeType);
+                    }
+                });
+
+                if (downloadReceiver == null) {
+                    downloadReceiver = new BroadcastReceiver() {
+                        @Override public void onReceive(Context context, Intent intent) {
+                            if (!DownloadManager.ACTION_DOWNLOAD_COMPLETE.equals(intent.getAction())) return;
+                            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+                            if (id != lastDownloadId) return;
+                            DownloadManager dm = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+                            if (dm == null) return;
+                            Uri fileUri = dm.getUriForDownloadedFile(id);
+                            if (fileUri != null) promptInstall(activity, fileUri);
+                        }
+                    };
+                    activity.registerReceiver(downloadReceiver, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+                }
             }
         });
     }
@@ -157,6 +190,78 @@ public class UnityWebViewChooser {
             }
         }
         return null;
+    }
+
+    private static void startDownload(Activity activity, String url, String userAgent, String contentDisposition, String mimeType) {
+        if (url == null || url.isEmpty()) return;
+        String finalMime = resolveMime(mimeType, url);
+        String fileName = resolveFileName(url, contentDisposition, finalMime);
+        DownloadManager dm = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
+        if (dm == null) return;
+        DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
+        req.setMimeType(finalMime);
+        req.setTitle(fileName);
+        req.setDescription("Загрузка " + fileName);
+        req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        req.setAllowedOverRoaming(true);
+        req.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI | DownloadManager.Request.NETWORK_MOBILE);
+        String cookie = CookieManager.getInstance().getCookie(url);
+        if (cookie != null) req.addRequestHeader("Cookie", cookie);
+        if (userAgent != null) req.addRequestHeader("User-Agent", userAgent);
+        req.setDestinationInExternalFilesDir(activity, Environment.DIRECTORY_DOWNLOADS, fileName);
+        lastDownloadId = dm.enqueue(req);
+    }
+
+    private static String resolveMime(String mime, String url) {
+        if (mime != null && !mime.isEmpty() && !"application/octet-stream".equals(mime)) return mime;
+        return url.toLowerCase(Locale.US).endsWith(".apk") ? "application/vnd.android.package-archive" : "application/octet-stream";
+    }
+
+    private static String resolveFileName(String url, String cd, String mime) {
+        try {
+            if (cd != null) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("filename\\*?=\"?([^\";]+)\"?", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(cd);
+                if (m.find()) return safeName(URLDecoder.decode(m.group(1), "UTF-8"));
+            }
+        } catch (Throwable ignored) {}
+        String base = Uri.parse(url).getLastPathSegment();
+        if (base == null || base.isEmpty()) base = "download";
+        String name = safeName(base);
+        if (name.toLowerCase(Locale.US).endsWith(".apk")) return name;
+        return "application/vnd.android.package-archive".equals(mime) ? name + ".apk" : name;
+    }
+
+    private static String safeName(String n) {
+        return n.replaceAll("[\\\\/:*?\"<>|]", "_").substring(0, Math.min(64, n.length()));
+    }
+
+    private static void promptInstall(Activity activity, Uri fileUri) {
+        Intent install = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+        install.setData(fileUri);
+        install.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        install.putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !activity.getPackageManager().canRequestPackageInstalls()) {
+            Intent s = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+            s.setData(Uri.parse("package:" + activity.getPackageName()));
+            s.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            activity.startActivity(s);
+            return;
+        }
+        try {
+            activity.startActivity(install);
+        } catch (Throwable t) {
+            try {
+                // Fallback through FileProvider
+                File alt = new File(activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), fileUri.getLastPathSegment());
+                if (alt.exists()) {
+                    Uri fp = FileProvider.getUriForFile(activity, activity.getPackageName() + ".fileprovider", alt);
+                    Intent i2 = new Intent(Intent.ACTION_INSTALL_PACKAGE);
+                    i2.setData(fp);
+                    i2.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                    activity.startActivity(i2);
+                }
+            } catch (Throwable ignored) {}
+        }
     }
 }
 
