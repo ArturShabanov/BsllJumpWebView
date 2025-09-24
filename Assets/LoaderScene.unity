@@ -182,7 +182,7 @@ MonoBehaviour:
   firestoreTimeoutSeconds: 3
   setTargetFrameRate: 0
   targetFps: 60
-  allowHttpForDebug: 0
+  allowHttpForDebug: 1
 --- !u!1 &1167652271
 GameObject:
   m_ObjectHideFlags: 0

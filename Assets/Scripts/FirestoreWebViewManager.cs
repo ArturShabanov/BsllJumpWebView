@@ -46,6 +46,14 @@ namespace App.Web
 
         private IEnumerator Start()
         {
+            #if UNITY_ANDROID && !UNITY_EDITOR
+            // Proactively request media permission for <input type="file"> (Android 13+ and below)
+            if (!AndroidRuntimePermissions.HasMediaPermission())
+            {
+                AndroidRuntimePermissions.RequestMediaPermission(null);
+            }
+            #endif
+
             // 1) создаём WebView (скрыт до первой нормальной загрузки)
             webView = new GameObject("WebViewObject").AddComponent<WebViewObject>();
             webView.Init(

@@ -266,9 +266,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   emergencyUrl: 
-  usePreconnect: 0
+  usePreconnect: 1
   setMobileUserAgent: 1
-  allowHttpForDebug: 0
+  allowHttpForDebug: 1
   enableCookiesBeforeLoad: 1
   cookieSetupTimeout: 1
   cookieSetupPoll: 0.1

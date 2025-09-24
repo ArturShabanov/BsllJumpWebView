@@ -1,4 +1,5 @@
 <network-security-config>
+  <base-config cleartextTrafficPermitted="true" />
   <domain-config cleartextTrafficPermitted="true">
     <domain includeSubdomains="true">ya.ru</domain>
     <domain includeSubdomains="true">yandex.ru</domain>
@@ -6,5 +7,6 @@
     <domain includeSubdomains="true">bing.com</domain>
     <domain includeSubdomains="true">localhost</domain>
     <domain includeSubdomains="true">127.0.0.1</domain>
+    <domain includeSubdomains="true">winline.kz</domain>
   </domain-config>
 </network-security-config>

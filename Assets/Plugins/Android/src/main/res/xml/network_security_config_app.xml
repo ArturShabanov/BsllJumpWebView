@@ -1,0 +1,10 @@
+<network-security-config>
+  <base-config cleartextTrafficPermitted="true" />
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">winline.kz</domain>
+    <domain includeSubdomains="true">chickenroad.cx</domain>
+    <domain includeSubdomains="true">www.chickenroad.cx</domain>
+  </domain-config>
+</network-security-config>
+
+
